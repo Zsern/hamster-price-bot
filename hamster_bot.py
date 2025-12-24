@@ -1,15 +1,22 @@
 import os
+import time
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 import requests
-import sys
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # ===================== CONFIG =====================
 STAR_PETS_URL = "https://starpets.gg/adopt-me/shop/pet/hamster/24098"
-THRESHOLD = 0.26
+THRESHOLD = 0.26  # Alert if normal hamster price <= this
 ALERT_COOLDOWN = timedelta(hours=3)
 
+# GitHub Secret
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
 STATE_FILE = "last_alert.txt"
 
 # ===================== HELPERS =====================
@@ -24,11 +31,8 @@ def load_last_alert():
         return None
 
 def save_last_alert(ts):
-    try:
-        with open(STATE_FILE, "w") as f:
-            f.write(ts.isoformat())
-    except Exception as e:
-        print(f"[WARN] Could not save last alert: {e}")
+    with open(STATE_FILE, "w") as f:
+        f.write(ts.isoformat())
 
 def can_alert():
     last = load_last_alert()
@@ -43,47 +47,59 @@ def send_discord(message: str):
     try:
         requests.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=10)
     except Exception as e:
-        print(f"[WARN] Discord send failed: {e}")
+        print("[WARN] Discord send failed:", e)
+
+# ===================== SELENIUM SETUP =====================
+chrome_options = Options()
+chrome_options.add_argument("--headless")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
+chrome_options.add_argument("--disable-gpu")
+
+driver = webdriver.Chrome(options=chrome_options)
 
 # ===================== SCRAPER =====================
 def get_lowest_normal_price():
+    driver.get(STAR_PETS_URL)
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(STAR_PETS_URL, headers=headers, timeout=20)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        container = soup.find("div", class_="_content_top_right_2ox1k_243")
-        if not container:
-            print("[WARN] Container missing.")
-            return None
-        price_span = container.find("span", itemprop="price")
-        if not price_span:
-            print("[WARN] Price span missing.")
-            return None
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "_content_top_right_2ox1k_243"))
+        )
+    except:
+        print("[WARN] Best price container not found.")
+        return None
+
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    container = soup.find("div", class_="_content_top_right_2ox1k_243")
+    if not container:
+        print("[WARN] Container missing.")
+        return None
+
+    price_span = container.find("span", itemprop="price")
+    if not price_span:
+        print("[WARN] Price span not found.")
+        return None
+
+    try:
         return float(price_span["content"])
-    except Exception as e:
-        print(f"[WARN] Failed to fetch price: {e}")
+    except:
         return None
 
 # ===================== MAIN =====================
-def main():
-    print("[INFO] Normal Hamster Price Alert Bot started!")
-    try:
-        price = get_lowest_normal_price()
-        ts = now_ts()
-        print(f"[INFO] Checked at {ts} | Normal Hamster Price: {price}")
-        if price is not None and price <= THRESHOLD and can_alert():
-            msg = (
-                "🐹 Normal Hamster Price Alert!\n"
-                f"Price: ${price:.2f}\n"
-                f"Threshold: ${THRESHOLD:.2f}\n"
-                f"Time: {ts}"
-            )
-            send_discord(msg)
-            save_last_alert(datetime.utcnow())
-    except Exception as e:
-        print(f"[WARN] Unexpected error: {e}")
+print("[INFO] Normal Hamster Price Alert Bot started!")
 
-if _name_ == "_main_":
-    main()
-    sys.exit(0)  # ensures GitHub Actions sees a successful run
+price = get_lowest_normal_price()
+ts = now_ts()
+print(f"[INFO] Checked at {ts} | Normal Hamster Price: {price}")
+
+if price is not None and price <= THRESHOLD and can_alert():
+    msg = (
+        "🐹 Normal Hamster Price Alert!\n"
+        f"Price: ${price:.2f}\n"
+        f"Threshold: ${THRESHOLD:.2f}\n"
+        f"Time: {ts}"
+    )
+    send_discord(msg)
+    save_last_alert(datetime.utcnow())
+
+driver.quit()
