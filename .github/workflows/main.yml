@@ -2,31 +2,23 @@ name: Hamster Price Bot
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 10 minutes
+    - cron: '*/10 * * * *'  # every 10 minutes
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v3
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
-
-      - name: Install system dependencies
+          python-version: '3.11'
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
-
-      - name: Install Python dependencies
-        run: |
-          pip install selenium beautifulsoup4 requests
-
-      - name: Run hamster bot
-        run: |
-          python test_selenium.py
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+      - name: Run Bot
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python hamster_bot.py
