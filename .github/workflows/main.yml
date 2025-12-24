@@ -41,4 +41,4 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python hamster_bot_selenium.py
+          python hamster_bot.py
