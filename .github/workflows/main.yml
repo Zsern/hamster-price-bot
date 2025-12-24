@@ -1,12 +1,12 @@
-name: Hamster Price Alert
+name: Hamster Price Bot
 
 on:
   schedule:
-    - cron: "*/10 * * * *" # every 10 minutes
+    - cron: "*/10 * * * *"  # every 10 minutes
   workflow_dispatch:
 
 jobs:
-  alert:
+  hamster-bot:
     runs-on: ubuntu-latest
 
     steps:
@@ -15,30 +15,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install selenium beautifulsoup4 requests
+        run: pip install selenium beautifulsoup4 requests
 
-      - name: Install Chrome
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip xvfb libxi6 libgconf-2-4
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+      - name: Set up ChromeDriver
+        uses: nanasess/setup-chromedriver@v1
 
-      - name: Install ChromeDriver
-        run: |
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
-          wget -N https://chromedriver.storage.googleapis.com/$CHROME_VERSION/chromedriver_linux64.zip
-          unzip chromedriver_linux64.zip
-          sudo mv chromedriver /usr/local/bin/chromedriver
-          sudo chmod +x /usr/local/bin/chromedriver
-
-      - name: Run bot
+      - name: Run Hamster Bot
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          python hamster_bot.py
+        run: python hamster_bot.py
