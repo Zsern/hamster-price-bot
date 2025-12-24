@@ -18,15 +18,20 @@ def now_ts():
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
 def load_last_alert():
+    if not os.path.exists(STATE_FILE):
+        return None
     try:
         with open(STATE_FILE, "r") as f:
             return datetime.fromisoformat(f.read().strip())
-    except:
+    except Exception:
         return None
 
 def save_last_alert(ts):
-    with open(STATE_FILE, "w") as f:
-        f.write(ts.isoformat())
+    try:
+        with open(STATE_FILE, "w") as f:
+            f.write(ts.isoformat())
+    except Exception as e:
+        print("[WARN] Could not save last_alert:", e)
 
 def can_alert():
     last = load_last_alert()
@@ -41,14 +46,13 @@ def send_discord(message: str):
     try:
         response = requests.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=10)
         if response.status_code >= 400:
-            print(f"[WARN] Discord webhook returned {response.status_code}: {response.text}")
+            print(f"[WARN] Discord returned {response.status_code}: {response.text}")
     except Exception as e:
         print("[WARN] Discord send failed:", e)
 
 # ===================== SCRAPER =====================
 def get_lowest_normal_price():
     headers = {"User-Agent": "Mozilla/5.0"}
-
     try:
         r = requests.get(STAR_PETS_URL, headers=headers, timeout=20)
         r.raise_for_status()
@@ -81,23 +85,22 @@ def get_lowest_normal_price():
 # ===================== MAIN =====================
 def main():
     print("[INFO] Normal Hamster Price Alert Bot started!")
+    price = get_lowest_normal_price()
+    ts = now_ts()
+    print(f"[INFO] Checked at {ts} | Normal Hamster Price: {price}")
 
-    try:
-        price = get_lowest_normal_price()
-        ts = now_ts()
-        print(f"[INFO] Checked at {ts} | Normal Hamster Price: {price}")
-
-        if price is not None and price <= THRESHOLD and can_alert():
-            msg = (
-                "🐹 Normal Hamster Price Alert!\n"
-                f"Price: ${price:.2f}\n"
-                f"Threshold: ${THRESHOLD:.2f}\n"
-                f"Time: {ts}"
-            )
-            send_discord(msg)
-            save_last_alert(datetime.utcnow())
-    except Exception as e:
-        print("[ERROR] Script failed:", e)
+    if price is not None and price <= THRESHOLD and can_alert():
+        msg = (
+            "🐹 Normal Hamster Price Alert!\n"
+            f"Price: ${price:.2f}\n"
+            f"Threshold: ${THRESHOLD:.2f}\n"
+            f"Time: {ts}"
+        )
+        send_discord(msg)
+        save_last_alert(datetime.utcnow())
 
 if _name_ == "_main_":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print("[ERROR] Script failed:", e)
