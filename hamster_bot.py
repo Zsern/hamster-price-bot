@@ -1,19 +1,16 @@
 import os
 from datetime import datetime, timedelta
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
+import requests
 
 # ===================== CONFIG =====================
 STAR_PETS_URL = "https://starpets.gg/adopt-me/shop/pet/hamster/24098"
 THRESHOLD = 0.26
 ALERT_COOLDOWN = timedelta(hours=3)
 
-# Webhook from GitHub Secrets
+# Discord webhook from GitHub Secrets
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
 STATE_FILE = "last_alert.txt"
 
 # ===================== HELPERS =====================
@@ -42,57 +39,59 @@ def send_discord(message: str):
         print("[WARN] Discord webhook not set")
         return
     try:
-        import requests
         requests.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=10)
     except Exception as e:
         print("[WARN] Discord send failed:", e)
 
-# ===================== SELENIUM SETUP =====================
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-
-# Use Chromium installed on GitHub Actions
-driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=chrome_options)
-
 # ===================== SCRAPER =====================
 def get_lowest_normal_price():
-    driver.get(STAR_PETS_URL)
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
     try:
-        # Wait until the price container is visible
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "_content_top_right_2ox1k_243"))
-        )
-    except:
-        print("[WARN] Container not found")
+        r = requests.get(STAR_PETS_URL, headers=headers, timeout=20)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[WARN] Failed to fetch page: {e}")
+        return None
+
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    # The container for the best price of the normal hamster
+    container = soup.find("div", class_="_content_top_right_2ox1k_243")
+    if not container:
+        print("[WARN] Container missing.")
+        return None
+
+    price_span = container.find("span", itemprop="price")
+    if not price_span:
+        print("[WARN] Price span missing.")
         return None
 
     try:
-        container = driver.find_element(By.CLASS_NAME, "_content_top_right_2ox1k_243")
-        price_span = container.find_element(By.CSS_SELECTOR, "span[itemprop='price']")
-        return float(price_span.get_attribute("content"))
+        return float(price_span["content"])
     except:
-        print("[WARN] Price span missing or invalid")
+        print("[WARN] Could not parse price.")
         return None
 
 # ===================== MAIN =====================
-print("[INFO] Normal Hamster Price Alert Bot started!")
+def main():
+    print("[INFO] Normal Hamster Price Alert Bot started!")
 
-price = get_lowest_normal_price()
-ts = now_ts()
-print(f"[INFO] Checked at {ts} | Normal Hamster Price: {price}")
+    price = get_lowest_normal_price()
+    ts = now_ts()
+    print(f"[INFO] Checked at {ts} | Normal Hamster Price: {price}")
 
-if price is not None and price <= THRESHOLD and can_alert():
-    msg = (
-        "🐹 Normal Hamster Price Alert!\n"
-        f"Price: ${price:.2f}\n"
-        f"Threshold: ${THRESHOLD:.2f}\n"
-        f"Time: {ts}"
-    )
-    send_discord(msg)
-    save_last_alert(datetime.utcnow())
+    if price is not None and price <= THRESHOLD and can_alert():
+        msg = (
+            "🐹 Normal Hamster Price Alert!\n"
+            f"Price: ${price:.2f}\n"
+            f"Threshold: ${THRESHOLD:.2f}\n"
+            f"Time: {ts}"
+        )
+        send_discord(msg)
+        save_last_alert(datetime.utcnow())
 
-driver.quit()
+if _name_ == "_main_":
+    main()
